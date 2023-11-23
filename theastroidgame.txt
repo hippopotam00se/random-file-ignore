@@ -1,0 +1,976 @@
+<html>
+<head>
+<title>
+The Astroid Game!
+</title>
+</head>
+<body>
+<script type="text/javascript">
+ 
+// main
+ 
+function main() {
+    // Adjust the displaySize to the window dimensions with a height 50 pixels less
+    var displaySize = new Coords(window.innerWidth - 25, window.innerHeight - 50);
+
+    var display = new Display(displaySize);
+
+    // Calculate the number of obstacles based on window size
+    var obstaclesCount = Math.floor((displaySize.x * displaySize.y) / 4 / (OBSTACLE_SIZE * OBSTACLE_SIZE));
+
+    var world = World.random(displaySize, obstaclesCount);
+
+    Globals.Instance.initialize(
+        10, // ticksPerSecond
+        display,
+        world
+    );
+}
+
+// Constants
+var OBSTACLE_SIZE = 20;
+var Scale_Factor = window.innerWidth/200
+// extensions
+ 
+function ArrayExtensions()
+{
+    // extension class
+}
+{
+    Array.prototype.remove = function(element)
+    {
+        var elementIndex = this.indexOf(element);
+        if (elementIndex >= 0)
+        {
+            this.splice(elementIndex, 1);
+        }
+        return this;
+    }
+}
+ 
+// classes
+ 
+function Activity(perform)
+{
+    this.perform = perform;
+}
+{
+    Activity.Instances = new Activity_Instances()
+     
+    function Activity_Instances()
+    {
+        this.DoNothing = new Activity(function perform() {});
+        this.UserInputAccept = new Activity
+        (
+            function perform(world, actor)
+            {
+                var inputHelper = Globals.Instance.inputHelper;
+                var inputsActive = inputHelper.keysPressed;
+ 
+                for (var i = 0; i < inputsActive.length; i++)
+                {
+                    var inputActive = inputsActive[i];
+                    if (inputActive == "a")
+                    {
+                        actor.forward.subtract
+                        (
+                            actor.right.clone().multiplyScalar
+                            (
+                                actor.turnsPerTick
+                            )
+                        ).normalize();
+                        actor.right.overwriteWith(actor.forward).right();
+                    }
+                    else if (inputActive == "d")
+                    {
+                        actor.forward.add
+                        (
+                            actor.right.clone().multiplyScalar
+                            (
+                                actor.turnsPerTick
+                            )
+                        ).normalize();
+                        actor.right.overwriteWith(actor.forward).right();
+                    }
+                    else if (inputActive == "w")
+                    {
+                        actor.vel.add
+                        (
+                            actor.forward.clone().multiplyScalar
+                            (
+                                actor.accelPerTick
+                            )
+                        );
+                    }
+                    else if (inputActive == "Enter")
+                    {
+                        if (world.projectiles.length > 0)
+                        {
+                            return;
+                        }
+ 
+                        var projectilePos = actor.forward.clone().multiplyScalar
+                        (
+                            actor.lengthHalf
+                        ).add
+                        (
+                            actor.pos
+                        );
+ 
+                        var projectileVel = actor.forward.clone().multiplyScalar
+                        (
+                            actor.projectileSpeed
+                        );
+ 
+                        var projectile = new Projectile
+                        (
+                            projectilePos, projectileVel
+                        );
+                        world.projectiles.push(projectile);
+ 
+                        inputHelper.removeKey(inputActive)
+                    }
+                }
+            }
+        );
+    }
+}
+ 
+function Actor(pos, activity)
+{
+    this.pos = pos;
+    this.activity = activity;
+ 
+    this.color = "Purple";
+    this.widthHalf = 3 * Scale_Factor;
+    this.lengthHalf = 4 * Scale_Factor;
+ 
+    this.forward = new Coords(1, 0);
+    this.right = this.forward.clone().right();
+ 
+    this.vel = new Coords(0, 0);
+ 
+    this.accelPerTick = .0025;
+    this.turnsPerTick = .02;
+    this.speedMax = .25 * Scale_Factor;
+    this.projectileSpeed = 1 * Scale_Factor; 
+ 
+    // Helper variables.
+ 
+    this.coordsTemp = new Coords();
+    this.vertices = 
+    [
+        new Coords(), new Coords(), new Coords()
+    ];
+}
+{
+    Actor.prototype.updateForTimerTick = function(world)
+    {
+        this.activity.perform(world, this);
+ 
+        var speed = this.vel.magnitude();
+        if (speed >= this.speedMax)
+        {
+            this.vel.normalize().multiplyScalar(this.speedMax);
+        }
+ 
+        this.pos.add(this.vel);
+        this.pos.wrapToRangeMax(world.size);
+ 
+        var collisionHelper = CollisionHelper.Instance;
+ 
+        var obstacles = world.obstacles;
+        for (var i = 0; i < obstacles.length; i++)
+        {
+            var obstacle = obstacles[i];
+            var doActorAndObstacleCollide = collisionHelper.doCirclesCollide
+            (
+                this.pos, this.widthHalf,
+                obstacle.pos, obstacle.radius
+            );
+            if (doActorAndObstacleCollide == true)
+            {
+                world.actors.remove(this);
+            }
+        }
+    }
+ 
+    // drawable
+ 
+    Actor.prototype.drawToDisplay = function(display)
+    {
+        this.vertices[0].overwriteWith
+        (
+            this.forward
+        ).multiplyScalar
+        (
+            this.lengthHalf
+        ).add
+        (
+            this.pos
+        );
+ 
+        var back = this.coordsTemp.overwriteWith
+        (
+            this.forward    
+        ).multiplyScalar
+        (
+            0 - this.lengthHalf
+        ).add
+        (
+            this.pos
+        );
+         
+        this.vertices[1].overwriteWith
+        (
+            this.right
+        ).multiplyScalar
+        (
+            this.widthHalf
+        ).add
+        (
+            back
+        );
+ 
+        this.vertices[2].overwriteWith
+        (
+            this.right
+        ).multiplyScalar
+        (
+            0 - this.widthHalf
+        ).add
+        (
+            back
+        );
+ 
+        display.drawPolygon(this.vertices, this.color);
+    }
+}
+ 
+function Coords(x, y)
+{
+    this.x = x;
+    this.y = y;
+}
+{
+    Coords.Instances = new Coords_Instances();
+ 
+    function Coords_Instances()
+    {
+        this.Zeroes = new Coords(0, 0);
+    }
+ 
+    Coords.prototype.add = function(other)
+    {
+        this.x += other.x;
+        this.y += other.y;
+        return this;
+    }
+ 
+    Coords.prototype.clear = function()
+    {
+        this.x = 0;
+        this.y = 0;
+    }
+ 
+    Coords.prototype.clone = function()
+    {
+        return new Coords(this.x, this.y);
+    }
+ 
+    Coords.prototype.divideScalar = function(scalar)
+    {
+        this.x /= scalar;
+        this.y /= scalar;   
+        return this;
+    }
+ 
+    Coords.prototype.dotProduct = function(other)
+    {
+        return this.x * other.x + this.y * other.y;
+    }
+ 
+    Coords.prototype.magnitude = function()
+    {
+        return Math.sqrt(this.x * this.x + this.y * this.y);
+    }
+ 
+    Coords.prototype.multiply = function(other)
+    {
+        this.x *= other.x;
+        this.y *= other.y;
+        return this;
+    }
+ 
+    Coords.prototype.multiplyScalar = function(scalar)
+    {
+        this.x *= scalar;
+        this.y *= scalar;   
+        return this;
+    }
+ 
+    Coords.prototype.normalize = function()
+    {
+        return this.divideScalar(this.magnitude());
+    }
+ 
+    Coords.prototype.overwriteWith = function(other)
+    {
+        this.x = other.x;
+        this.y = other.y;
+        return this;
+    }
+ 
+    Coords.prototype.random = function()
+    {
+        this.x = Math.random();
+        this.y = Math.random();
+        return this;
+    }
+ 
+    Coords.prototype.right = function()
+    {
+        var temp = this.x;
+        this.x = 0 - this.y;
+        this.y = temp;
+        return this;
+    }
+ 
+    Coords.prototype.subtract = function(other)
+    {
+        this.x -= other.x;
+        this.y -= other.y;
+        return this;
+    }
+ 
+    Coords.prototype.wrapToRangeMax = function(max)
+    {
+        while (this.x < 0)
+        {
+            this.x += max.x;
+        }
+        while (this.x >= max.x)
+        {
+            this.x -= max.x;
+        }
+ 
+        while (this.y < 0)
+        {
+            this.y += max.y;
+        }
+        while (this.y >= max.y)
+        {
+            this.y -= max.y;
+        }
+ 
+        return this;
+    }
+}
+ 
+function CollisionHelper()
+{
+    this.displacement = new Coords();
+    this.edgeForward = new Coords();
+    this.edgeRight = new Coords();
+}
+{
+    CollisionHelper.Instance = new CollisionHelper();
+ 
+    CollisionHelper.prototype.doCirclesCollide = function
+    (
+        circle0Center, circle0Radius, circle1Center, circle1Radius
+    )
+    {
+        var distanceBetweenCenters = this.displacement.overwriteWith
+        (
+            circle1Center
+        ).subtract
+        (
+            circle0Center
+        ).magnitude();
+ 
+        var sumOfRadii = circle0Radius + circle1Radius;
+ 
+        var returnValue = (distanceBetweenCenters < sumOfRadii);
+ 
+        return returnValue;
+    }
+}
+ 
+function Display(size)
+{
+    this.size = size;
+ 
+    this.colorBack = "White";
+    this.colorFore = "Gray";
+}
+{
+    Display.prototype.initialize = function()
+    {
+        var canvas = document.createElement("canvas");
+        canvas.width = this.size.x;
+        canvas.height = this.size.y;
+        this.graphics = canvas.getContext("2d");
+ 
+        document.body.appendChild(canvas);
+    }
+ 
+    // drawing
+ 
+    Display.prototype.clear = function()
+    {
+        this.graphics.fillStyle = this.colorBack;
+        this.graphics.fillRect
+        (
+            0, 0, this.size.x, this.size.y
+        );
+ 
+        this.graphics.strokeStyle = this.colorFore;
+        this.graphics.strokeRect
+        (
+            0, 0, this.size.x, this.size.y
+        );
+    }
+ 
+    Display.prototype.drawCircle = function(center, radius, colorBorder)
+    {
+        this.graphics.strokeStyle = colorBorder;
+ 
+        this.graphics.beginPath();
+        this.graphics.arc(center.x, center.y, radius, 0, Polar.RadiansPerTurn);
+        this.graphics.stroke();
+    }
+ 
+    Display.prototype.drawLine = function(fromPos, toPos, color)
+    {
+        this.graphics.strokeStyle = color;
+        this.graphics.beginPath();
+        this.graphics.moveTo(fromPos.x, fromPos.y);
+        this.graphics.lineTo(toPos.x, toPos.y);
+        this.graphics.stroke();
+    }
+ 
+    Display.prototype.drawPolygon = function(vertices, colorBorder)
+    {
+        this.graphics.strokeStyle = colorBorder;
+        this.graphics.beginPath();
+        var vertex = vertices[0];
+        this.graphics.moveTo(vertex.x, vertex.y);
+        for (var i = 1; i < vertices.length; i++)
+        {
+            vertex = vertices[i];
+            this.graphics.lineTo(vertex.x, vertex.y);
+        }
+        this.graphics.closePath();
+        this.graphics.stroke();
+    }
+ 
+ 
+    Display.prototype.drawRectangle = function(pos, size, colorBorder)
+    {
+        this.graphics.strokeStyle = colorBorder;
+        this.graphics.strokeRect
+        (
+            pos.x, pos.y, size.x, size.y
+        );
+    }
+ 
+    Display.prototype.drawText = function(text, height, pos, color)
+    {
+        this.graphics.strokeStyle = this.colorBack;
+        this.graphics.strokeText(text, pos.x, pos.y + height);
+ 
+        this.graphics.fillStyle = color;
+        this.graphics.fillText(text, pos.x, pos.y + height);
+    }
+}
+ 
+function Globals()
+{
+    // Do nothing.
+}
+{
+    Globals.Instance = new Globals();
+ 
+    Globals.prototype.initialize = function(timerTicksPerSecond, display, world)
+    {
+        this.display = display;
+        this.display.initialize();
+ 
+        this.world = world;
+ 
+        this.inputHelper = new InputHelper();
+         
+        var millisecondsPerTimerTick = Math.floor(1000 / this.timerTicksPerSecond);
+        this.timer = setInterval
+        (
+            this.handleEventTimerTick.bind(this), 
+            millisecondsPerTimerTick
+        );
+ 
+        this.inputHelper.initialize();
+    }
+ 
+    // events
+ 
+    Globals.prototype.handleEventTimerTick = function()
+    {
+        this.world.drawToDisplay(this.display);
+        this.world.updateForTimerTick();
+    }
+}
+ 
+function InputHelper()
+{
+    this.keysPressed = [];
+}
+{
+    InputHelper.prototype.initialize = function()
+    {
+        document.body.onkeydown = this.handleEventKeyDown.bind(this);
+        document.body.onkeyup = this.handleEventKeyUp.bind(this);
+    }
+ 
+    InputHelper.prototype.removeKey = function(key)
+    {
+        if (this.keysPressed[key] != null)
+        {
+            this.keysPressed.splice(this.keysPressed.indexOf(key), 1);
+            delete this.keysPressed[key];
+        }
+    }
+ 
+    // events 
+ 
+    InputHelper.prototype.handleEventKeyDown = function(event)
+    {
+        var key = event.key;
+        if (this.keysPressed[key] == null)
+        {
+            this.keysPressed.push(key);
+            this.keysPressed[key] = key;
+        }
+    }
+ 
+    InputHelper.prototype.handleEventKeyUp = function(event)
+    {
+        this.removeKey(event.key);
+    }
+ 
+}
+ 
+function Polar(azimuthInTurns, radius)
+{
+    this.azimuthInTurns = azimuthInTurns;
+    this.radius = radius;
+}
+{
+    Polar.RadiansPerTurn = Math.PI * 2;
+ 
+    Polar.prototype.toCoords = function(coords)
+    {
+        var azimuthInRadians = this.azimuthInTurns * Polar.RadiansPerTurn; 
+        coords.x = Math.cos(azimuthInRadians) * this.radius;
+        coords.y = Math.sin(azimuthInRadians) * this.radius;
+        return coords;
+    }
+ 
+    Polar.prototype.trimAzimuthToRangeMinMax = function(min, max)
+    {
+        if (this.azimuthInTurns < min)
+        {
+            this.azimuthInTurns = min;
+        }
+        else if (this.azimuthInTurns > max)
+        {
+            this.azimuthInTurns = max;
+        }
+        return this;
+    }
+}
+ 
+function Obstacle(radius, pos, vel)
+{
+    this.radius = radius * Scale_Factor;
+    this.pos = pos;
+    this.vel = vel;
+}
+{
+    Obstacle.prototype.updateForTimerTick = function(world)
+    {
+        this.pos.add(this.vel).wrapToRangeMax(world.size);
+ 
+        var collisionHelper = CollisionHelper.Instance;
+        var obstacles = world.obstacles;
+        for (var i = 0; i < obstacles.length; i++)
+        {
+            var other = obstacles[i];
+            if (other != this)
+            {
+                var doThisAndOtherCollide = collisionHelper.doCirclesCollide
+                (
+                    this.pos, this.radius,
+                    other.pos, other.radius
+                );
+ 
+                if (doThisAndOtherCollide == true)
+                {
+                    this.collideWithOther(other);
+                }
+            }
+        }
+    }
+ 
+    // drawable
+ 
+    Obstacle.prototype.drawToDisplay = function(display)
+    {
+        display.drawCircle(this.pos, this.radius, "Green");
+    }
+ 
+    // collidable
+ 
+    Obstacle.prototype.collideWithOther = function(other)
+    {
+        var bodyPositionsAfterCollision = [new Coords(), new Coords()];
+        var bodyVelsAfterCollision = [new Coords(), new Coords()];
+        var displacement = new Coords();
+        var velocityRelative = new Coords();
+  
+        var bodies = [ this, other ];
+        var body0 = bodies[0];
+        var body1 = bodies[1];
+  
+        var sumOfBodyRadii = 
+            body0.radius + body1.radius; 
+  
+        velocityRelative.overwriteWith
+        (
+            body0.vel
+        ).subtract
+        (
+            body1.vel
+        );
+   
+        displacement.overwriteWith
+        (
+            body0.pos
+        ).subtract
+        (
+            body1.pos
+        );
+  
+        var distanceBetweenBodyCenters = displacement.magnitude();
+        var overlap = sumOfBodyRadii - distanceBetweenBodyCenters;
+        var overlapHalf = overlap / 2;
+  
+        var normalAtCollision = displacement.divideScalar
+        (
+            distanceBetweenBodyCenters
+        );
+  
+        var velocityAlongNormal = normalAtCollision.multiplyScalar
+        (
+            velocityRelative.dotProduct
+            (
+                normalAtCollision
+            )
+        );
+  
+        velocityRelative.subtract
+        (
+            velocityAlongNormal
+        ).multiplyScalar
+        (
+            -1
+        );
+  
+        for (var i = 0; i < bodies.length; i++)
+        {
+            var bodyThis = bodies[i];
+            var bodyOther = bodies[1 - i];
+          
+            var bodyPosAfterCollision = bodyPositionsAfterCollision[i];
+            var bodyVelAfterCollision = bodyVelsAfterCollision[i];
+  
+            var multiplier = (i == 0 ? -1 : 1);
+  
+            bodyPosAfterCollision.overwriteWith
+            (
+                normalAtCollision
+            ).multiplyScalar
+            (
+                multiplier * overlapHalf
+            ).add
+            (
+                bodyThis.pos
+            );
+   
+            bodyVelAfterCollision.overwriteWith
+            (
+                velocityRelative
+            ).multiplyScalar
+            (
+                multiplier
+            ).add
+            (
+                bodyOther.vel
+            );
+        }
+  
+        for (var i = 0; i < bodies.length; i++)
+        {
+            var bodyThis = bodies[i];
+            var bodyPosAfterCollision = bodyPositionsAfterCollision[i];
+            var bodyVelAfterCollision = bodyVelsAfterCollision[i];
+  
+            bodyThis.pos.overwriteWith
+            (
+                bodyPosAfterCollision
+            );
+            bodyThis.vel.overwriteWith
+            (
+                bodyVelAfterCollision
+            );
+        }
+    }
+ 
+}
+ 
+function Projectile(pos, vel)
+{
+    this.pos = pos;
+    this.vel = vel;
+ 
+    this.radiusInFlight = 2 * Scale_Factor
+    ;
+    this.colorInFlight = "Gray";
+ 
+    this.ticksSinceSpawned = 0;
+    this.ticksToLive = 100;
+ 
+    this.ticksSinceExplosion = null;
+    this.ticksToExplode = 30 * Scale_Factor;
+    this.radiusExplodingMax = 20 * Scale_Factor;
+    this.colorExploding = "Orange";
+}
+{
+    Projectile.prototype.drawToDisplay = function(display)
+    {
+        if (this.ticksSinceExplosion == null)
+        {
+            display.drawCircle
+            (
+                this.pos, this.radiusInFlight, this.colorInFlight
+            );
+            display.drawLine
+            (
+                this.pos, 
+                this.pos.clone().subtract(this.vel), 
+                this.colorInFlight
+            );
+        }
+        else
+        {
+            var radiusCurrent = 
+                this.radiusExplodingMax 
+                * this.ticksSinceExplosion 
+                / this.ticksToExplode;
+            display.drawCircle(this.pos, radiusCurrent, this.colorExploding);
+        }
+    }
+ 
+    Projectile.prototype.updateForTimerTick = function(world)
+    {
+        if (this.ticksSinceSpawned >= this.ticksToLive)
+        {
+            world.projectiles.remove(this);
+        }
+        else if (this.ticksSinceExplosion == null)
+        {
+            this.pos.add(this.vel).wrapToRangeMax(world.size);
+             
+            this.updateForTimerTick_Obstacles(world);
+        }
+        else if (this.ticksSinceExplosion < this.ticksToExplode)
+        {
+            this.ticksSinceExplosion++;
+        }
+        else
+        {
+            // todo
+        }
+ 
+        this.ticksSinceSpawned++;
+    }
+ 
+    Projectile.prototype.updateForTimerTick_Obstacles = function(world)
+    {
+        var collisionHelper = CollisionHelper.Instance;
+ 
+        var obstacles = world.obstacles;
+ 
+        for (var i = 0; i < obstacles.length; i++)
+        {
+            var obstacle = obstacles[i];
+            var doProjectileAndObstacleCollide = collisionHelper.doCirclesCollide
+            (
+                this.pos, this.radiusInFlight,
+                obstacle.pos, obstacle.radius
+            );
+ 
+            if (doProjectileAndObstacleCollide == true)
+            {
+                world.projectiles.remove(this);
+                obstacles.remove(obstacle);
+                i--;
+ 
+                this.updateForTimerTick_Obstacles_Children
+                (
+                    world, obstacle
+                );
+ 
+                break;
+            }
+        }
+    }
+ 
+    Projectile.prototype.updateForTimerTick_Obstacles_Children = function(world, obstacle)
+    {
+        var obstacleChildRadius = obstacle.radius / (2 * Scale_Factor);
+        if (obstacleChildRadius >= 2)
+        {
+            for (var c = 0; c < 2; c++)
+            {
+                var lateral = obstacle.vel.clone().right().normalize().multiplyScalar
+                (
+                    (c == 0 ? -1 : 1)
+                )
+ 
+                var displacement = lateral.clone().multiplyScalar
+                (
+                    obstacleChildRadius
+                );
+                var accel = lateral.clone().multiplyScalar(.1);
+ 
+                var obstacleChildVel = obstacle.vel.clone().add(accel);
+ 
+                var obstacleChild = new Obstacle
+                (
+                    obstacleChildRadius,
+                    obstacle.pos.clone().add(displacement),
+                    obstacleChildVel
+                );
+                world.obstacles.push(obstacleChild);
+            }
+        }
+    }
+}
+ 
+function World(size, actor, obstacles)
+{
+    this.size = size;
+    this.actors = [ actor ];
+    this.obstacles = obstacles;
+ 
+    this.projectiles = [];
+}
+{
+    World.random = function(size)
+    {
+        var actorPos = size.clone().multiplyScalar(.5);
+ 
+        var actor = new Actor
+        (
+            actorPos,
+            Activity.Instances.UserInputAccept
+        );
+ 
+        var numberOfObstacles = 2;
+        var obstacleRadius = 16;
+ 
+        var obstacles = [];
+        var obstacleSpeedMax = .2;
+        for (var i = 0; i < numberOfObstacles; i++)
+        {
+            var pos = new Coords().random().multiply(size);
+            var vel = new Polar
+            (
+                Math.random(), // azimuthInTurns
+                Math.random() * obstacleSpeedMax // radius
+            ).toCoords(new Coords());
+ 
+            var obstacle = new Obstacle
+            (
+                obstacleRadius, pos, vel
+            );
+ 
+            obstacles.push(obstacle);
+        }
+ 
+        var returnValue = new World
+        (
+            size,
+            actor,
+            obstacles
+        );
+ 
+        return returnValue;
+    }
+ 
+    // instance methods
+ 
+    World.prototype.updateForTimerTick = function()
+    {       
+        for (var i = 0; i < this.actors.length; i++)
+        {
+            var actor = this.actors[i];
+            actor.updateForTimerTick(this);
+        }
+ 
+        for (var i = 0; i < this.obstacles.length; i++)
+        {
+            var obstacle = this.obstacles[i];
+            obstacle.updateForTimerTick(this);
+        }
+ 
+        for (var i = 0; i < this.projectiles.length; i++)
+        {
+            var projectile = this.projectiles[i];
+            projectile.updateForTimerTick(this);
+        }
+    }
+ 
+    // drawable
+ 
+    World.prototype.drawToDisplay = function(display)
+    {
+        display.clear();
+ 
+        for (var i = 0; i < this.obstacles.length; i++)
+        {
+            var obstacle = this.obstacles[i];
+            obstacle.drawToDisplay(display);
+        }
+ 
+        for (var i = 0; i < this.actors.length; i++)
+        {
+            var actor = this.actors[i];
+            actor.drawToDisplay(display);
+        }
+ 
+        for (var i = 0; i < this.projectiles.length; i++)
+        {
+            var projectile = this.projectiles[i];
+            projectile.drawToDisplay(display);
+        }
+    }
+}
+ 
+// run
+ 
+main();
+ 
+</script>
+</body>
+</html>
